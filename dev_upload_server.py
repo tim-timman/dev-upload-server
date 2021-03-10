@@ -3,7 +3,6 @@ import logging
 from pathlib import Path
 import secrets
 import socket
-import sys
 from typing import List
 
 from fastapi import Depends, FastAPI, File, HTTPException, status, UploadFile
@@ -49,22 +48,23 @@ def get_ip():
     return IP
 
 
+def get_current_username_stub():
+    return ""
+
+
 def get_current_username(credentials: HTTPBasicCredentials = Depends(security)):
-    if args.no_security:
-        return ""
-    else:
-        correct_username = secrets.compare_digest(credentials.username, username)
-        correct_password = secrets.compare_digest(credentials.password, password)
-        if not (correct_username and correct_password):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Incorrect username or password",
-                headers={"WWW-Authenticate": "Basic"},
-            )
-        return credentials.username
+    correct_username = secrets.compare_digest(credentials.username, username)
+    correct_password = secrets.compare_digest(credentials.password, password)
+    if not (correct_username and correct_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Basic"},
+        )
+    return credentials.username
 
 
-@app.post('/uploadfiles/', status_code=status.HTTP_201_CREATED)
+@app.post('/', status_code=status.HTTP_201_CREATED)
 async def file_upload(username: str = Depends(get_current_username),
                       files: List[UploadFile] = File(...)):
     names = []
@@ -86,14 +86,21 @@ async def file_upload(username: str = Depends(get_current_username),
 
 @app.get("/")
 async def main():
+    cli_str = " ".join(filter(None, [
+        "curl",
+        "-u 'username[:password]'" if args.security else None,
+        url,
+        "-F 'files=@/path/to/file1'",
+        "[-F 'files=@/path/to/file2' ...]",
+    ]))
     content = f"""
 <body>
-<form action="/uploadfiles/" enctype="multipart/form-data" method="post">
+<form action="/" enctype="multipart/form-data" method="post">
 <input name="files" type="file" multiple>
 <input type="submit">
 </form>
 <pre>
-curl {"" if args.no_security else "-u username[:password]"} -F 'files[]=@/path/to/file' http://{get_ip()}:{args.port}
+{cli_str}
 </pre>
 </body>
     """
@@ -111,8 +118,8 @@ if __name__ == "__main__":
     parser.add_argument("-p", "--port", type=int, default=5000, required=False,
                         help="port to serve at (DEFAULT: %(default)s)")
     security_group = parser.add_mutually_exclusive_group(required=True)
-    security_group.add_argument("--no-security", action="store_true",
-                                help="don't use any security")
+    security_group.add_argument("--no-security", dest="security",
+                                action="store_false", help="don't use any security")
     security_group.add_argument("-u", "--user", type=str,
                                  help="require basic auth; 'username:password'")
 
@@ -122,16 +129,33 @@ if __name__ == "__main__":
     if not save_dir.exists() or not save_dir.is_dir():
         parser.error(f"--directory: {save_dir} is not a directory")
 
-    parts = args.user.split(":")
-    if len(parts) != 2:
-        parser.error(f"--user: not in expected form: 'username:password'")
+    if args.security:
+        parts = args.user.split(":")
+        if len(parts) != 2:
+            parser.error(f"--user: not in expected form: 'username:password'")
+        else:
+            username, password = parts
     else:
-        username, password = parts
+        # @FIXME cannot run with --no-security
+        # it will ask for credentials anyway. Probably the Depend(security)
+        # that triggers regardless.
+        # Stubbing doesn't work; it seems to bind the api at parse
+        get_current_username = get_current_username_stub
 
     config = uvicorn.Config(app, host=args.bind, port=args.port)
     server = uvicorn.Server(config=config)
 
     setup_logging()
     logger.info(f"Will be saving files to {save_dir}")
+    url = f"http://{get_ip()}:{args.port}/"
 
+    usage_str = " ".join(filter(None, [
+        "cli usage:\n",
+        "curl",
+        f"-u '{username}:{password}'" if args.security else None,
+        url,
+        "-F 'files=@/path/to/file1'",
+        "[-F 'files=@/path/to/file2' ...]\n",
+    ]))
+    logger.info(usage_str)
     server.run()
