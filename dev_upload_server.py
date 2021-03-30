@@ -1,4 +1,5 @@
 import argparse
+import html
 import logging
 from pathlib import Path
 import secrets
@@ -93,6 +94,16 @@ async def main():
         "-F 'files=@/path/to/file1'",
         "[-F 'files=@/path/to/file2' ...]",
     ]))
+    simple_cli_str = " ".join(filter(None, [
+        r"""sed 's/\(.*\)/-F "files=@\1"/' <<EOF | tr '\n' ' ' | xargs -pr curl""",
+        "-u 'username[:password]'" if args.security else None,
+        url,
+        "\n"
+        "/path/to/file1\n"
+        "/path/to/file2\n"
+        "`ls *.txt`\n"
+        "EOF"
+    ]))
     content = f"""
 <body>
 <form action="/" enctype="multipart/form-data" method="post">
@@ -100,7 +111,10 @@ async def main():
 <input type="submit">
 </form>
 <pre>
-{cli_str}
+{html.escape(cli_str)}
+</pre>
+<pre>
+{html.escape(simple_cli_str)}
 </pre>
 </body>
     """
@@ -157,5 +171,18 @@ if __name__ == "__main__":
         "-F 'files=@/path/to/file1'",
         "[-F 'files=@/path/to/file2' ...]\n",
     ]))
+
+    simple_usage_str = " ".join(filter(None, [
+        "simple cli usage:\n"
+        r"""sed 's/\(.*\)/-F "files=@\1"/' <<EOF | tr '\n' ' ' | xargs -pr curl""",
+        f"-u '{username}:{password}'" if args.security else None,
+        url,
+        "\n"
+        "/path/to/file1\n"
+        "/path/to/file2\n"
+        "`ls *.txt`\n"
+        "EOF"
+    ]))
     logger.info(usage_str)
+    logger.info(simple_usage_str)
     server.run()
