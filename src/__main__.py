@@ -1,4 +1,5 @@
 import argparse
+import dataclasses
 import html
 import logging
 from pathlib import Path
@@ -35,6 +36,18 @@ app = FastAPI()
 security = HTTPBasic()
 
 
+@dataclasses.dataclass
+class Config:
+    username: str
+    password: str
+    use_security: bool
+    save_dir: Path
+    url: str
+
+
+config: Config
+
+
 def get_ip():
     """from https://stackoverflow.com/a/28950776"""
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -54,8 +67,8 @@ def get_current_username_stub():
 
 
 def get_current_username(credentials: HTTPBasicCredentials = Depends(security)):
-    correct_username = secrets.compare_digest(credentials.username, username)
-    correct_password = secrets.compare_digest(credentials.password, password)
+    correct_username = secrets.compare_digest(credentials.username, config.username)
+    correct_password = secrets.compare_digest(credentials.password, config.password)
     if not (correct_username and correct_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -75,7 +88,7 @@ async def file_upload(username: str = Depends(get_current_username),
         suffix = path.suffix
         if username:
             stem = f"{username}_{stem}"
-        output_path = save_dir / (stem + suffix)
+        output_path = config.save_dir / (stem + suffix)
         with output_path.open("wb") as wh:
             wh.write(await file.read())
             await file.close()
@@ -86,18 +99,18 @@ async def file_upload(username: str = Depends(get_current_username),
 
 
 @app.get("/")
-async def main():
+async def root():
     cli_str = " ".join(filter(None, [
         "curl",
-        "-u 'username[:password]'" if args.security else None,
-        url,
+        "-u 'username[:password]'" if config.use_security else None,
+        config.url,
         "-F 'files=@/path/to/file1'",
         "[-F 'files=@/path/to/file2' ...]",
     ]))
     simple_cli_str = " ".join(filter(None, [
         r"""sed 's/\(.*\)/-F "files=@\1"/' <<EOF | tr '\n' ' ' | xargs -pr curl""",
-        "-u 'username[:password]'" if args.security else None,
-        url,
+        "-u 'username[:password]'" if config.use_security else None,
+        config.url,
         "\n"
         "/path/to/file1\n"
         "/path/to/file2\n"
@@ -121,7 +134,7 @@ async def main():
     return HTMLResponse(content=content)
 
 
-if __name__ == "__main__":
+def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("-d", "--directory", default="./",
                         help="directory to save uploaded files"
@@ -135,7 +148,7 @@ if __name__ == "__main__":
     security_group.add_argument("--no-security", dest="security",
                                 action="store_false", help="don't use any security")
     security_group.add_argument("-u", "--user", type=str,
-                                 help="require basic auth; 'username:password'")
+                                help="require basic auth; 'username:password'")
 
     args = parser.parse_args()
 
@@ -156,8 +169,8 @@ if __name__ == "__main__":
         # Stubbing doesn't work; it seems to bind the api at parse
         get_current_username = get_current_username_stub
 
-    config = uvicorn.Config(app, host=args.bind, port=args.port)
-    server = uvicorn.Server(config=config)
+    server_config = uvicorn.Config(app, host=args.bind, port=args.port)
+    server = uvicorn.Server(config=server_config)
 
     setup_logging()
     logger.info(f"Will be saving files to {save_dir}")
@@ -185,4 +198,12 @@ if __name__ == "__main__":
     ]))
     logger.info(usage_str)
     logger.info(simple_usage_str)
+
+    global config
+    config = Config(username=username, password=password,
+                    use_security=args.security, save_dir=save_dir, url=url)
     server.run()
+
+
+if __name__ == "__main__":
+    main()
