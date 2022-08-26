@@ -37,4 +37,4 @@ dev = [
 ]
 
 [project.scripts]
-dev-upload-server = "dev_upload_server:__main__.main"
+dev-upload-server = "dev_upload_server.__main__:main"
