@@ -1,0 +1,40 @@
+[build-system]
+requires = ["flit_core >=3.4,<4"]
+build-backend = "flit_core.buildapi"
+
+[project]
+name = "dev-upload-server"
+authors = [
+    {name = "Tim Johansson", email = "tim.den.vilde@gmail.com"},
+]
+readme = "README.md"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Private :: Do Not Upload",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: Implementation :: CPython",
+]
+requires-python = ">=3.9,<4"
+# These are automatically loaded from the package's __init__.py
+dynamic = ["version", "description"]
+
+dependencies = [
+    "fastapi ==0.63.0",
+    "python-multipart ==0.0.5",
+    "uvicorn ==0.13.4"
+]
+
+[tool.flit.module]
+name = "dev_upload_server"
+
+[project.optional-dependencies]
+dev = [
+    "flit >=3.4",
+]
+
+[project.scripts]
+dev-upload-server = "dev_upload_server:__main__.main"

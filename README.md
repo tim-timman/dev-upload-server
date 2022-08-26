@@ -14,64 +14,41 @@ optional arguments:
   -u USER, --user USER  require basic auth; 'username:password'
 ```
 
+## Development
 
-### Development
+### Environment Setup
 
-#### Create virtual environment
-
-```
+Create a local virtualenv at the root of the repo:
+```shell
 python3.9 -m venv venv
+venv/bin/pip install -U pip setuptools wheel
 ```
+This will create a virtualenv at `venv/` and update dependencies.
 
+> **Note:** on Windows the `venv/bin` directory is named `venv/Scripts`.
+> Substitute where appropriate.
 
-#### Activate it
-
-**Unix**:
-
-```
+Activate the virtualenv:
+```shell
 source venv/bin/activate
 ```
+> **Note:** from now on all commands are assumed to be run
+> within the activated virtualenv.
 
-**Windows**:
-
-```
-source venv/Scripts/activate
-```
-
-**Note!** From here on it is assumed that the virtual environment is activated.
-
-#### Install in developer mode
-
-In this mode any code changes are immediately reflected in the installation.
-
-```
-pip install -e .'[dev]' --no-binary :all:
+Install the project in editable mode with dependencies and dev dependencies:
+```shell
+pip install -e '.[dev]'
 ```
 
+When installed in the editable manner above, any code changes are immediately
+reflected in the code. The only exception is if an entrypoint is changed.
 
-### Build and distribute
+### Building the package
 
-
-#### Make sure tools are up to date
-
-```
-pip install -U pip setuptools wheel
-```
-
-
-#### Build it
+The package is configured to be built with [Flit][flit] for simplicity.
 
 ```
-python setup.py bdist_wheel
+flit build 
 ```
 
-The file for distribution will be created in `./dist` with a name like 
-`dev_upload_server-0.0.1-py3-none-any.whl`.
-
-#### Distribute and install the `*.whl`
-
-To install the build package, run:
-
-```
-pip install dev_upload_server-0.0.1-py3-none-any.whl
-```
+[flit]: https://flit.pypa.io/en/latest/
