@@ -2,12 +2,13 @@ import argparse
 import dataclasses
 import html
 import logging
+import textwrap
 from pathlib import Path
 import secrets
 import socket
-from typing import List
+from typing import List, Optional
 
-from fastapi import Depends, FastAPI, File, HTTPException, status, UploadFile
+from fastapi import Depends, FastAPI, File, HTTPException, Request, status, UploadFile
 from fastapi.responses import HTMLResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 import uvicorn
@@ -54,28 +55,34 @@ def get_ip():
     try:
         # doesn't even have to be reachable
         s.connect(('10.255.255.255', 1))
-        IP = s.getsockname()[0]
+        ip = s.getsockname()[0]
     except Exception:
-        IP = '127.0.0.1'
+        ip = '127.0.0.1'
     finally:
         s.close()
-    return IP
+    return ip
 
 
-def get_current_username_stub():
-    return ""
+async def optional_security(request: Request):
+    if config.use_security:
+        return await security(request)
+    else:
+        return None
 
 
-def get_current_username(credentials: HTTPBasicCredentials = Depends(security)):
-    correct_username = secrets.compare_digest(credentials.username, config.username)
-    correct_password = secrets.compare_digest(credentials.password, config.password)
-    if not (correct_username and correct_password):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
-            headers={"WWW-Authenticate": "Basic"},
-        )
-    return credentials.username
+def get_current_username(credentials: Optional[HTTPBasicCredentials] = Depends(optional_security)):
+    if config.use_security:
+        correct_username = secrets.compare_digest(credentials.username, config.username)
+        correct_password = secrets.compare_digest(credentials.password, config.password)
+        if not (correct_username and correct_password):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Incorrect username or password",
+                headers={"WWW-Authenticate": "Basic"},
+            )
+        return credentials.username
+    else:
+        return "anonymous"
 
 
 @app.post('/', status_code=status.HTTP_201_CREATED)
@@ -92,7 +99,7 @@ async def file_upload(username: str = Depends(get_current_username),
         with output_path.open("wb") as wh:
             wh.write(await file.read())
             await file.close()
-            logger.info(f"wrote image {file.filename} of type {file.content_type} to {output_path}")
+            logger.info(f"wrote file {file.filename} of type {file.content_type} to {output_path}")
             names.append(output_path.name)
 
     return {"names": names}
@@ -160,14 +167,11 @@ def main():
         parts = args.user.split(":")
         if len(parts) != 2:
             parser.error(f"--user: not in expected form: 'username:password'")
+            raise SystemExit(1)
         else:
             username, password = parts
     else:
-        # @FIXME cannot run with --no-security
-        # it will ask for credentials anyway. Probably the Depend(security)
-        # that triggers regardless.
-        # Stubbing doesn't work; it seems to bind the api at parse
-        get_current_username = get_current_username_stub
+        username, password = None, None
 
     server_config = uvicorn.Config(app, host=args.bind, port=args.port)
     server = uvicorn.Server(config=server_config)
